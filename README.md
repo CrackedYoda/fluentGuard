@@ -149,9 +149,44 @@ const notBanned = Rule.not({
 });
 ```
 
----
+### `RuleBuilder` — Fluent Chaining
 
-### `guard.ruleName(fn, options?)`
+For more readable, English-like rule definitions, use the `RuleBuilder`:
+
+```typescript
+import { RuleBuilder } from 'fluentguard';
+
+// Chain conditions fluently — reads like a sentence
+const rule = RuleBuilder
+  .where(isWorker)
+  .and(hasBalance)
+  .andNot(isSuspended)
+  .or(isAdmin)
+  .build();
+
+// Equivalent to: (isWorker AND hasBalance AND NOT isSuspended) OR (isAdmin)
+```
+
+| Method | Behavior |
+|--------|----------|
+| `.where(v)` | Starts the chain with validator `v` |
+| `.and(v)` | Adds `v` to the current AND group |
+| `.andNot(v)` | Adds the inverse of `v` to the current AND group |
+| `.or(v)` | Starts a new OR branch with `v` |
+| `.build()` | Compiles into a standard `Rule` — works with `createSchema()` |
+
+Use it in your schema just like any other rule:
+
+```typescript
+const { guard } = createSchema({
+  canTransact: RuleBuilder
+    .where(isKYCVerified)
+    .and(hasBalance)
+    .andNot(isFlagged)
+    .or(isComplianceOfficer)
+    .build()
+});
+```
 
 Wraps `fn` so that the named rule is evaluated **before** execution.
 
@@ -162,10 +197,11 @@ await secureFn(user, context); // Throws RuleDeniedError if rules fail
 
 **Options:**
 
-| Option           | Type                         | Description |
-|------------------|------------------------------|-------------|
-| `resolveUser`    | `(args: any[]) => any`       | Custom extractor to pull `user` from any argument shape |
-| `resolveContext` | `(args: any[]) => any`       | Custom extractor to pull `context` from any argument shape |
+| Option           | Type                                      | Description |
+|------------------|-------------------------------------------|-------------|
+| `resolveUser`    | `(args: any[]) => any`                    | Custom extractor to pull `user` from any argument shape |
+| `resolveContext` | `(args: any[]) => any`                    | Custom extractor to pull `context` from any argument shape |
+| `subjects`       | `Record<string, (args: any[]) => any>`    | Multi-actor map — first key = user, rest merge into context |
 
 #### Custom Argument Extraction
 
@@ -319,6 +355,31 @@ const { guard } = createSchema({
 });
 ```
 
+### Multi-Actor Validation (Fintech Transfers)
+
+Validate **multiple users** in one guard — e.g., sender AND receiver:
+
+```typescript
+const { guard } = createSchema({
+  transfer: Rule.all([
+    { check: (sender) => sender.role === 'worker', message: () => 'Sender must be a worker' },
+    { check: (sender, ctx) => ctx.receiver.role === 'client', message: () => 'Receiver must be a client' },
+    { check: (sender, ctx) => sender.balance >= ctx.amount, message: () => 'Insufficient balance' },
+  ])
+});
+
+// Use `subjects` to map arguments to actors
+const secureTransfer = guard.transfer(processTransfer, {
+  subjects: {
+    sender: (args) => args[0],     // first subject = user
+    receiver: (args) => args[1],   // merged into context as ctx.receiver
+  },
+  resolveContext: (args) => ({ amount: args[2] })
+});
+
+await secureTransfer(senderUser, receiverUser, 500);
+```
+
 ---
 
 ## 🔒 Security
@@ -339,8 +400,10 @@ FluentGuard includes built-in security hardening:
 npm test
 ```
 
-Runs the full [Vitest](https://vitest.dev/) test suite covering:
+Runs the full [Vitest](https://vitest.dev/) test suite (**29 tests**) covering:
 - Rule logical builders (`.all`, `.any`, `.not`)
+- Fluent chaining via `RuleBuilder`
+- Multi-actor validation via `subjects`
 - Guard proxy interception and function wrapping
 - Custom argument extraction
 - Security hardening (prototype pollution, null users, error boundaries)

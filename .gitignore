@@ -14,3 +14,4 @@ npm-debug.log*
 coverage
 specification.md
 src/core/__tests__
+examples
