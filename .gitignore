@@ -1,0 +1,16 @@
+
+node_modules
+dist
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+.env
+.env.*
+coverage
+specification.md
+src/core/__tests__
